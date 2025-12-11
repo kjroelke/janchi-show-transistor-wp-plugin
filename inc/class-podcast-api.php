@@ -47,7 +47,11 @@ class Podcast_API extends API {
 			$this->log_error( 'No episode data found from Transistor API.' );
 			return;
 		}
-		foreach ( $data['data'] as $episode ) {
+		foreach ( $data['data'] as $index => $episode ) {
+			if ( 0 !== $index ) {
+				// Only get the latest episode
+				break;
+			}
 			$this->create_episode( $episode );
 		}
 	}
@@ -173,19 +177,35 @@ class Podcast_API extends API {
 	 * @return int|bool the ID or 0 if error
 	 */
 	private function set_artwork( Episode_Attributes $episode, int $id ): int {
-		$image_data    = wp_upload_bits( basename( $episode->image_url ), null, file_get_contents( $episode->image_url ) );
+		$image_response = wp_remote_get( $episode->image_url );
+		if ( is_wp_error( $image_response ) || 200 !== wp_remote_retrieve_response_code( $image_response ) ) {
+			$this->log_error( "Failed to retrieve image for episode ID {$id}." );
+			return 0;
+		}
+		$image_bits = wp_remote_retrieve_body( $image_response );
+		if ( ! $image_bits ) {
+			$this->log_error( "No image data found for episode ID {$id}." );
+			return 0;
+		}
+		$image_data    = wp_upload_bits( basename( $episode->image_url ), null, $image_bits );
 		$attachment    = array(
 			'post_mime_type' => $image_data['type'],
 			'post_title'     => "Episode {$episode->number} artwork",
 			'post_content'   => '',
 			'post_status'    => 'inherit',
 		);
-		$attachment_id = wp_insert_attachment( $attachment, $image_data['file'], $id );
+		$attachment_id = wp_insert_attachment( $attachment, $image_data['file'], $id, true );
 
-		if ( ! is_wp_error( $attachment_id ) ) {
-			// Set the uploaded image as the featured image
-			return set_post_thumbnail( $id, $attachment_id );
+		if ( is_wp_error( $attachment_id ) ) {
+			$this->log_error( "Failed to insert attachment for episode ID {$id}." );
+			return 0;
 		}
-		return 0;
+		// Set the uploaded image as the featured image
+		$success = set_post_thumbnail( $id, $attachment_id );
+		if ( false === $success ) {
+			$this->log_error( "Failed to set featured image for episode ID {$id}." );
+			return 0;
+		}
+		return $attachment_id;
 	}
 }
