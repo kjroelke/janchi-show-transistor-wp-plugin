@@ -48,10 +48,6 @@ class Podcast_API extends API {
 			return;
 		}
 		foreach ( $data['data'] as $index => $episode ) {
-			if ( 0 !== $index ) {
-				// Only get the latest episode
-				break;
-			}
 			$this->create_episode( $episode );
 		}
 	}
