@@ -5,8 +5,11 @@
  * @package JanchiShow
  */
 
+namespace JanchiShow\Plugins;
+
 /** The Episode Attributes from Transistor */
 class Episode_Attributes {
+	public int $transistor_id;
 	public ?string $title;
 	public ?int $number;
 	public ?int $season;
@@ -40,9 +43,11 @@ class Episode_Attributes {
 	/**
 	 * Add array items to class props
 	 *
-	 * @param array $data the Episode attributes data
+	 * @param array $episode_data the Episode attributes data
 	 */
-	public function __construct( array $data ) {
+	public function __construct( array $episode_data ) {
+		$data                         = $episode_data['attributes']; // For clarity
+		$this->transistor_id          = absint( $episode_data['id'] );
 		$this->title                  = $data['title'] ?? null;
 		$this->number                 = $data['number'] ?? null;
 		$this->season                 = $data['season'] ?? null;

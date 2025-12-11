@@ -7,6 +7,8 @@
  * @package JanchiShow
  */
 
+namespace JanchiShow\Plugins;
+
 /** Get Parent Class. */
 require_once __DIR__ . '/class-api.php';
 
@@ -17,13 +19,6 @@ require_once __DIR__ . '/class-episode-attributes.php';
  * This class protects and manages the API Request that a Cron job will make.
  */
 class Podcast_API extends API {
-	/**
-	 * The episode data
-	 *
-	 * @var $episode
-	 */
-	protected Episode_Attributes $episode;
-
 	/**
 	 * The Janchi Show User ID on the Production Site
 	 *
@@ -42,11 +37,36 @@ class Podcast_API extends API {
 	/**
 	 * Creates new Post for each artist in the `artist_data` object with `wp_insert_post`
 	 */
-	public function get_latest_episode() {
-		$data             = $this->get_episode_data();
-		$latest_episode   = $data['data'][0];
-		$this->episode    = new Episode_Attributes( $latest_episode['attributes'] );
-		$new_episode_post = $this->wp_friendly_array( $this->episode );
+	public function get_latest_episodes() {
+		$data = $this->get_episode_data();
+		if ( is_wp_error( $data ) ) {
+			$this->log_error( $data->get_error_message() );
+			return;
+		}
+		if ( empty( $data['data'] ) ) {
+			$this->log_error( 'No episode data found from Transistor API.' );
+			return;
+		}
+		foreach ( $data['data'] as $index => $episode ) {
+			if ( 0 !== $index ) {
+				// Only get the latest episode
+				break;
+			}
+			$this->create_episode( $episode );
+		}
+	}
+
+	/**
+	 * Create Episode
+	 *
+	 * @param array $raw_episode the latest episode data
+	 */
+	private function create_episode( array $raw_episode ) {
+		$episode = new Episode_Attributes( $raw_episode );
+		if ( $this->episode_exists( $episode ) ) {
+			return;
+		}
+		$new_episode_post = $this->wp_friendly_array( $episode );
 		remove_filter( 'content_save_pre', 'wp_filter_post_kses' );
 		remove_filter( 'content_filtered_save_pre', 'wp_filter_post_kses' );
 		$episode_id = wp_insert_post( $new_episode_post, true );
@@ -55,10 +75,45 @@ class Podcast_API extends API {
 		if ( is_wp_error( $episode_id ) ) {
 			$error = $episode_id->get_error_message();
 			$this->log_error( $error );
-		} else {
-			$this->set_artwork( $episode_id );
-
+			return;
 		}
+		$this->set_artwork( $episode, $episode_id );
+	}
+
+	/**
+	 * Check if Episode Exists
+	 *
+	 * @param Episode_Attributes $episode the Transistor Episode
+	 * @return bool true if exists, false if not
+	 */
+	private function episode_exists( Episode_Attributes $episode ): bool {
+		$args     = array(
+			'post_type' => 'episodes',
+		);
+		$id_query = get_posts(
+			array(
+				...$args,
+				'meta_query' => array(
+					array(
+						'key'   => 'transistor_id',
+						'value' => $episode->transistor_id,
+					),
+				),
+			)
+		);
+		if ( ! empty( $id_query ) ) {
+			return true;
+		}
+		$title_query = get_posts(
+			array(
+				...$args,
+				's' => $episode->title,
+			)
+		);
+		if ( ! empty( $title_query ) ) {
+			return true;
+		}
+		return false;
 	}
 
 	/**
@@ -78,6 +133,9 @@ class Podcast_API extends API {
 			'post_date'     => $episode->published_at,
 			'post_content'  => $content,
 			'post_category' => array( $this->production_env_category_id ),
+			'meta_input'    => array(
+				'transistor_id' => $episode->transistor_id,
+			),
 		);
 		if ( $excerpt ) {
 			$new_episode_post['post_excerpt'] = $excerpt;
@@ -91,7 +149,6 @@ class Podcast_API extends API {
 	 * @param Episode_Attributes $episode the Episode
 	 */
 	private function set_the_post_content( Episode_Attributes $episode ): string {
-
 		$content = $episode->embed_html . $episode->formatted_description;
 		return $content;
 	}
@@ -115,23 +172,40 @@ class Podcast_API extends API {
 
 	/** Sets the Show Art
 	 *
-	 * @param int $id the Episode ID
+	 * @param Episode_Attributes $episode the Episode
+	 * @param int                $id the Episode ID
 	 * @return int|bool the ID or 0 if error
 	 */
-	private function set_artwork( int $id ): int {
-		$image_data    = wp_upload_bits( basename( $this->episode->image_url ), null, file_get_contents( $this->episode->image_url, false, null, 0 ) );
+	private function set_artwork( Episode_Attributes $episode, int $id ): int {
+		$image_response = wp_remote_get( $episode->image_url );
+		if ( is_wp_error( $image_response ) || 200 !== wp_remote_retrieve_response_code( $image_response ) ) {
+			$this->log_error( "Failed to retrieve image for episode ID {$id}." );
+			return 0;
+		}
+		$image_bits = wp_remote_retrieve_body( $image_response );
+		if ( ! $image_bits ) {
+			$this->log_error( "No image data found for episode ID {$id}." );
+			return 0;
+		}
+		$image_data    = wp_upload_bits( basename( $episode->image_url ), null, $image_bits );
 		$attachment    = array(
 			'post_mime_type' => $image_data['type'],
-			'post_title'     => "Episode {$this->episode->number} artwork",
+			'post_title'     => "Episode {$episode->number} artwork",
 			'post_content'   => '',
 			'post_status'    => 'inherit',
 		);
-		$attachment_id = wp_insert_attachment( $attachment, $image_data['file'], $id );
+		$attachment_id = wp_insert_attachment( $attachment, $image_data['file'], $id, true );
 
-		if ( ! is_wp_error( $attachment_id ) ) {
-			// Set the uploaded image as the featured image
-			return set_post_thumbnail( $id, $attachment_id );
+		if ( is_wp_error( $attachment_id ) ) {
+			$this->log_error( "Failed to insert attachment for episode ID {$id}." );
+			return 0;
 		}
-		return 0;
+		// Set the uploaded image as the featured image
+		$success = set_post_thumbnail( $id, $attachment_id );
+		if ( false === $success ) {
+			$this->log_error( "Failed to set featured image for episode ID {$id}." );
+			return 0;
+		}
+		return $attachment_id;
 	}
 }

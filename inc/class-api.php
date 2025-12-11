@@ -6,6 +6,10 @@
  *  @package JanchiShow
  */
 
+namespace JanchiShow\Plugins;
+
+use WP_Error;
+
 /**
  * Class: API
  * The class that handles the actual API calls
@@ -29,10 +33,9 @@ class API {
 	 *
 	 * @param string $error_message the error message
 	 */
-	protected function log_error( string $error_message ) {
+	protected function log_error( string $error_message ): void {
 		$now           = new DateTime( 'now', wp_timezone() );
 		$error_message = $now->format( 'F j, Y g:i a' ) . ' ' . $error_message . "\n";
-
 		wp_mail( array_unique( array( get_option( 'admin_email' ), 'kj.roelke@gmail.com' ) ), 'Transistor API Error', $error_message );
 	}
 
@@ -41,15 +44,20 @@ class API {
 	 *
 	 * @return array The Episodes Data
 	 */
-	protected function get_episode_data() {
+	protected function get_episode_data(): array|WP_Error {
 		$transistor_endpoint = $this->base_url . '/episodes' . "?show_id={$this->show_id}";
-		$response            = wp_remote_get( $transistor_endpoint, array( 'headers' => array( 'x-api-key' => TRANSISTOR_API ) ) );
+		$response            = wp_remote_get(
+			$transistor_endpoint,
+			array(
+				'headers' => array( 'x-api-key' => TRANSISTOR_API ),
+			)
+		);
 		if ( isset( $response['response']['message'] ) && 'OK' !== $response['response']['message'] ) {
 			$response = new WP_Error( 'transistor_api', $response['response']['message'], $response['headers']['data'] );
 		}
 
 		if ( is_wp_error( $response ) ) {
-			echo $response->get_error_message();
+			return $response;
 		} else {
 			$data = json_decode( wp_remote_retrieve_body( $response ), true );
 			return $data;

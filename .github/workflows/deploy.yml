@@ -10,5 +10,5 @@ jobs:
         uses: macrosbysara/shared-github-actions/.github/workflows/deploy-release.yml@main
         with:
             should_build: true
-            plugin_name: mbs-countdown-block
+            plugin_name: janchi-show-transistor-wp-plugin
         secrets: inherit
