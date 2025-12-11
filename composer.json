@@ -1,0 +1,18 @@
+{
+	"name": "janchi-show/janchi-show-transistor-wp-plugin",
+	"description": "A WordPress plugin to display Transistor.fm podcast episodes on your site.",
+	"type": "project",
+	"config": {
+		"allow-plugins": {
+			"composer/installers": true,
+			"dealerdirect/phpcodesniffer-composer-installer": true
+		}
+	},
+	"scripts": {
+		"phpcs": "phpcs inc/ janchi-show-transistor-wp-plugin.php",
+		"phpcbf": "phpcbf inc/ janchi-show-transistor-wp-plugin.php"
+	},
+	"require-dev": {
+		"wp-coding-standards/wpcs": "*"
+	}
+}

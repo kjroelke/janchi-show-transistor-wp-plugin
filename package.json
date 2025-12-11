@@ -1,0 +1,26 @@
+{
+	"name": "janchi-show-transistor-wp-plugin",
+	"version": "1.0.0",
+	"description": "A WordPress plugin to display Transistor.fm podcast episodes on your site.",
+	"prettier": "@wordpress/prettier-config",
+	"browserslist": [
+		"extends @wordpress/browserslist-config"
+	],
+	"author": "Choctaw Nation of Oklahoma",
+	"files": [
+		"inc",
+		"README.md",
+		"LICENSE",
+		"CHANGELOG.md",
+		"README.md",
+		"janchi-show-transistor-wp-plugin.php"
+	],
+	"scripts": {
+		"build": "wp-scripts build --blocks-manifest --webpack-copy-php",
+		"plugin-zip": "wp-scripts build && wp-scripts plugin-zip",
+		"start": "wp-scripts start --blocks-manifest --webpack-copy-php"
+	},
+	"devDependencies": {
+		"@wordpress/scripts": "^31.1.0"
+	}
+}
