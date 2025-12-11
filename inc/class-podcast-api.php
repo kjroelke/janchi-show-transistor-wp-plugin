@@ -7,6 +7,8 @@
  * @package JanchiShow
  */
 
+namespace JanchiShow\Plugins;
+
 /** Get Parent Class. */
 require_once __DIR__ . '/class-api.php';
 
@@ -20,7 +22,7 @@ class Podcast_API extends API {
 	/**
 	 * The episode data
 	 *
-	 * @var $episode
+	 * @var Episode_Attributes $episode
 	 */
 	protected Episode_Attributes $episode;
 
@@ -43,9 +45,12 @@ class Podcast_API extends API {
 	 * Creates new Post for each artist in the `artist_data` object with `wp_insert_post`
 	 */
 	public function get_latest_episode() {
-		$data             = $this->get_episode_data();
-		$latest_episode   = $data['data'][0];
-		$this->episode    = new Episode_Attributes( $latest_episode['attributes'] );
+		$data           = $this->get_episode_data();
+		$latest_episode = $data['data'][0];
+		$this->episode  = new Episode_Attributes( $latest_episode['attributes'] );
+		if ( $this->episode_exists( $this->episode ) ) {
+			return;
+		}
 		$new_episode_post = $this->wp_friendly_array( $this->episode );
 		remove_filter( 'content_save_pre', 'wp_filter_post_kses' );
 		remove_filter( 'content_filtered_save_pre', 'wp_filter_post_kses' );
@@ -59,6 +64,44 @@ class Podcast_API extends API {
 			$this->set_artwork( $episode_id );
 
 		}
+	}
+
+	/**
+	 * Check if Episode Exists
+	 *
+	 * @param Episode_Attributes $episode the Transistor Episode
+	 * @return bool true if exists, false if not
+	 */
+	private function episode_exists( Episode_Attributes $episode ): bool {
+		$found    = false;
+		$args     = array(
+			'post_type' => 'episodes',
+			'fields'    => 'ids',
+		);
+		$id_query = get_posts(
+			array(
+				...$args,
+				array(
+					'meta_key'   => 'transistor_id',
+					'meta_value' => $episode->transistor_id,
+
+				),
+			)
+		);
+
+		if ( ! empty( $id_query ) ) {
+			$found = true;
+		}
+		$title_query = get_posts(
+			array(
+				...$args,
+				's' => $episode->title,
+			)
+		);
+		if ( ! empty( $title_query ) ) {
+			$found = true;
+		}
+		return $found;
 	}
 
 	/**
@@ -78,6 +121,9 @@ class Podcast_API extends API {
 			'post_date'     => $episode->published_at,
 			'post_content'  => $content,
 			'post_category' => array( $this->production_env_category_id ),
+			'meta_input'    => array(
+				'transistor_id' => $episode->transistor_id,
+			),
 		);
 		if ( $excerpt ) {
 			$new_episode_post['post_excerpt'] = $excerpt;
@@ -119,7 +165,7 @@ class Podcast_API extends API {
 	 * @return int|bool the ID or 0 if error
 	 */
 	private function set_artwork( int $id ): int {
-		$image_data    = wp_upload_bits( basename( $this->episode->image_url ), null, file_get_contents( $this->episode->image_url, false, null, 0 ) );
+		$image_data    = wp_upload_bits( basename( $this->episode->image_url ), null, wp_remote_get( $this->episode->image_url ), false, null, 0 );
 		$attachment    = array(
 			'post_mime_type' => $image_data['type'],
 			'post_title'     => "Episode {$this->episode->number} artwork",

@@ -15,7 +15,7 @@
  * @package JanchiShow
  */
 
-
+use JanchiShow\Plugins\Podcast_API;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	die;
@@ -26,4 +26,37 @@ if ( ! defined( 'TRANSISTOR_API' ) ) {
 }
 
 require_once __DIR__ . '/inc/class-podcast-api.php';
-$podcast_api = new Podcast_API();
+
+add_action(
+	'wp_loaded',
+	function () {
+		$hook = 'janchi_show_sync_episodes';
+
+		if ( ! wp_next_scheduled( $hook ) ) {
+			$event_time = new DateTime( 'now', wp_timezone() );
+			$event_time->setTime( 5, 0, 0 );
+			if ( 'Wednesday' === $event_time->format( 'l' ) && $event_time > new DateTime( 'now', wp_timezone() ) ) {
+				$first_event_timestamp = $event_time->getTimestamp();
+			} else {
+				$event_time->modify( 'next Wednesday' );
+				$first_event_timestamp = $event_time->getTimestamp();
+			}
+			wp_schedule_event( $first_event_timestamp, 'weekly', $hook );
+		}
+	}
+);
+
+add_action(
+	'janchi_show_sync_episodes',
+	function () {
+		$podcast_api = new Podcast_API();
+		$podcast_api->get_latest_episode();
+	}
+);
+
+register_deactivation_hook(
+	__FILE__,
+	function () {
+		wp_clear_scheduled_hook( 'janchi_show_sync_episodes' );
+	}
+);
