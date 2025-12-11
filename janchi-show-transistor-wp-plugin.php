@@ -50,7 +50,7 @@ add_action(
 	'janchi_show_sync_episodes',
 	function () {
 		$podcast_api = new Podcast_API();
-		$podcast_api->get_latest_episode();
+		$podcast_api->get_latest_episodes();
 	}
 );
 

@@ -43,10 +43,11 @@ class Episode_Attributes {
 	/**
 	 * Add array items to class props
 	 *
-	 * @param array $data the Episode attributes data
+	 * @param array $episode_data the Episode attributes data
 	 */
-	public function __construct( array $data ) {
-		$this->transistor_id          = absint( $data['id'] );
+	public function __construct( array $episode_data ) {
+		$data                         = $episode_data['attributes']; // For clarity
+		$this->transistor_id          = absint( $episode_data['id'] );
 		$this->title                  = $data['title'] ?? null;
 		$this->number                 = $data['number'] ?? null;
 		$this->season                 = $data['season'] ?? null;

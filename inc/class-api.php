@@ -8,6 +8,8 @@
 
 namespace JanchiShow\Plugins;
 
+use WP_Error;
+
 /**
  * Class: API
  * The class that handles the actual API calls
@@ -44,13 +46,18 @@ class API {
 	 */
 	protected function get_episode_data(): array|WP_Error {
 		$transistor_endpoint = $this->base_url . '/episodes' . "?show_id={$this->show_id}";
-		$response            = wp_remote_get( $transistor_endpoint, array( 'headers' => array( 'x-api-key' => TRANSISTOR_API ) ) );
+		$response            = wp_remote_get(
+			$transistor_endpoint,
+			array(
+				'headers' => array( 'x-api-key' => TRANSISTOR_API ),
+			)
+		);
 		if ( isset( $response['response']['message'] ) && 'OK' !== $response['response']['message'] ) {
 			$response = new WP_Error( 'transistor_api', $response['response']['message'], $response['headers']['data'] );
 		}
 
 		if ( is_wp_error( $response ) ) {
-			echo $response->get_error_message();
+			return $response;
 		} else {
 			$data = json_decode( wp_remote_retrieve_body( $response ), true );
 			return $data;

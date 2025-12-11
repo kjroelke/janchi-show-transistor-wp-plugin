@@ -20,13 +20,6 @@ require_once __DIR__ . '/class-episode-attributes.php';
  */
 class Podcast_API extends API {
 	/**
-	 * The episode data
-	 *
-	 * @var Episode_Attributes $episode
-	 */
-	protected Episode_Attributes $episode;
-
-	/**
 	 * The Janchi Show User ID on the Production Site
 	 *
 	 * @var $production_env_user_id
@@ -44,14 +37,32 @@ class Podcast_API extends API {
 	/**
 	 * Creates new Post for each artist in the `artist_data` object with `wp_insert_post`
 	 */
-	public function get_latest_episode() {
-		$data           = $this->get_episode_data();
-		$latest_episode = $data['data'][0];
-		$this->episode  = new Episode_Attributes( $latest_episode['attributes'] );
-		if ( $this->episode_exists( $this->episode ) ) {
+	public function get_latest_episodes() {
+		$data = $this->get_episode_data();
+		if ( is_wp_error( $data ) ) {
+			$this->log_error( $data->get_error_message() );
 			return;
 		}
-		$new_episode_post = $this->wp_friendly_array( $this->episode );
+		if ( empty( $data['data'] ) ) {
+			$this->log_error( 'No episode data found from Transistor API.' );
+			return;
+		}
+		foreach ( $data['data'] as $episode ) {
+			$this->create_episode( $episode );
+		}
+	}
+
+	/**
+	 * Create Episode
+	 *
+	 * @param array $raw_episode the latest episode data
+	 */
+	private function create_episode( array $raw_episode ) {
+		$episode = new Episode_Attributes( $raw_episode );
+		if ( $this->episode_exists( $episode ) ) {
+			return;
+		}
+		$new_episode_post = $this->wp_friendly_array( $episode );
 		remove_filter( 'content_save_pre', 'wp_filter_post_kses' );
 		remove_filter( 'content_filtered_save_pre', 'wp_filter_post_kses' );
 		$episode_id = wp_insert_post( $new_episode_post, true );
@@ -60,10 +71,9 @@ class Podcast_API extends API {
 		if ( is_wp_error( $episode_id ) ) {
 			$error = $episode_id->get_error_message();
 			$this->log_error( $error );
-		} else {
-			$this->set_artwork( $episode_id );
-
+			return;
 		}
+		$this->set_artwork( $episode, $episode_id );
 	}
 
 	/**
@@ -73,24 +83,22 @@ class Podcast_API extends API {
 	 * @return bool true if exists, false if not
 	 */
 	private function episode_exists( Episode_Attributes $episode ): bool {
-		$found    = false;
 		$args     = array(
 			'post_type' => 'episodes',
-			'fields'    => 'ids',
 		);
 		$id_query = get_posts(
 			array(
 				...$args,
-				array(
-					'meta_key'   => 'transistor_id',
-					'meta_value' => $episode->transistor_id,
-
+				'meta_query' => array(
+					array(
+						'key'   => 'transistor_id',
+						'value' => $episode->transistor_id,
+					),
 				),
 			)
 		);
-
 		if ( ! empty( $id_query ) ) {
-			$found = true;
+			return true;
 		}
 		$title_query = get_posts(
 			array(
@@ -99,9 +107,9 @@ class Podcast_API extends API {
 			)
 		);
 		if ( ! empty( $title_query ) ) {
-			$found = true;
+			return true;
 		}
-		return $found;
+		return false;
 	}
 
 	/**
@@ -137,7 +145,6 @@ class Podcast_API extends API {
 	 * @param Episode_Attributes $episode the Episode
 	 */
 	private function set_the_post_content( Episode_Attributes $episode ): string {
-
 		$content = $episode->embed_html . $episode->formatted_description;
 		return $content;
 	}
@@ -161,14 +168,15 @@ class Podcast_API extends API {
 
 	/** Sets the Show Art
 	 *
-	 * @param int $id the Episode ID
+	 * @param Episode_Attributes $episode the Episode
+	 * @param int                $id the Episode ID
 	 * @return int|bool the ID or 0 if error
 	 */
-	private function set_artwork( int $id ): int {
-		$image_data    = wp_upload_bits( basename( $this->episode->image_url ), null, wp_remote_get( $this->episode->image_url ), false, null, 0 );
+	private function set_artwork( Episode_Attributes $episode, int $id ): int {
+		$image_data    = wp_upload_bits( basename( $episode->image_url ), null, file_get_contents( $episode->image_url ) );
 		$attachment    = array(
 			'post_mime_type' => $image_data['type'],
-			'post_title'     => "Episode {$this->episode->number} artwork",
+			'post_title'     => "Episode {$episode->number} artwork",
 			'post_content'   => '',
 			'post_status'    => 'inherit',
 		);
